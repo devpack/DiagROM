@@ -1,4 +1,4 @@
-;APS00000030000000300002B7900002C1410002C1410002C1410002C1410002C1410002C1410002C141
+;APS0000002F0000002F0002C1D30002CB840002CB840002CB840002CB840002CB840002CB840002CB84
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -51,8 +51,8 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 
 ; Then some different modes for the assembler
 
-rommode =	1				; Set to 1 if to assemble as being in ROM
-a1k =		1				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
+rommode =	0				; Set to 1 if to assemble as being in ROM
+a1k =		0				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
 
@@ -1629,7 +1629,6 @@ code:
 	cmp.b	#0,d6			; Check if we had any return, if so we have a loopbackadapter installed.
 	beq	.noloopback
 
-	move.b	d6,shit
 	move.w	#5,SerialSpeed-V(a6)	; Set serialspeed to 5 ,(same as 0 but mark loopbackadapter)
 	move.b	#1,LoopB-V(a6)
 
@@ -7939,6 +7938,149 @@ GFXTestRaster:
 	bra	GFXtestMenu
 
 
+GFXTestRGB:
+	bsr	ClearScreen
+
+	move.l	#257*40,d0					; Amount of memory needed for one bitplan
+	add.l	#GFXColTestCopperEnd-GFXColTestCopperStart,d0	; Add for size of copperlist
+	bsr	GetChip						; Get chipmem needed.
+	cmp.l	#2,d0						; Check if 2 or lower
+	ble	GFXtestMenu					; if so just exit (I know. bad move not to tell user)
+
+
+	move.l	d0,SHIT-V(a6)
+
+
+	move.l	d0,a2						; Put start of memory in A2
+
+	move.l	#$ffffffff,10(a2)
+;	move.l	#$ffffffff,16(a2)
+	move.l	#$ffffffff,22(a2)
+
+	add.l	#40,a2
+
+;	move.l	#$ffffffff,10(a2)
+	move.l	#$ffffffff,16(a2)
+	move.l	#$ffffffff,22(a2)
+
+
+
+	move.l	d0,d5						; Make a backup of this address
+
+
+	add.l	#80,d0						; Add 80 to d0, so we put copperlist after the "bitplane"
+	move.l	d0,a2
+	move.l	d0,d6
+
+
+
+
+	lea	GFXColTestCopperStart,a1
+	add.l	#GFXColTestCopperEnd-GFXColTestCopperStart,d7	; Add for size of copperlist
+.loop:
+	move.b	(a1)+,(a2)+
+	dbf	d7,.loop					; Copy in copperlist to start of memory
+
+
+	move.l	d0,a0
+	add.l	#GFXColTestCopperWait-GFXColTestCopperStart,a0	; Fix a0 to where the wait block in copper list starts
+	clr.l	d2						; Clear the testcolor
+
+	move.l	a0,a1
+	sub.l	#4*4-2,a1					; a1 will now contain address of bitplanepointers
+
+	move.l	d5,d4
+	swap	d4
+	move.w	d4,(a1)
+	add.l	#4,a1
+	move.w	d5,(a1)
+	add.l	#4,a1
+
+	add.l	#40,d5						; Add for next bitplane
+
+	move.l	d5,d4
+	swap	d4
+	move.w	d4,(a1)
+	add.l	#4,a1
+	move.w	d5,(a1)
+	add.l	#4,a1
+
+
+	
+	move.b	#$18,d1						; What ROW to start colors at
+	move.l	#15,d7						; Number of colors
+.createloop:
+	move.l	#$0001ff00,(a0)					; Write the wait command to copperlist
+	move.b	d1,(a0)						; Replace first byte with the real row
+	add.l	#4,a0
+	move.w	#$0182,(a0)+
+	move.w	d2,d3
+	asl.w	#8,d3						; Make color red
+	move.w	d3,(a0)+
+
+	move.w	#$0184,(a0)+
+	move.w	d2,d3
+	asl.w	#4,d3						; Make color green
+	move.w	d3,(a0)+
+
+	move.w	#$0186,(a0)+
+	move.w	d2,(a0)+					; Write color as blue
+
+
+	add.w	#1,d2
+	add.b	#$f,d1
+	dbf	d7,.createloop
+
+	move.l	#$0001ff00,(a0)					; Write the wait command to copperlist
+	move.b	d1,(a0)						; Replace first byte with the real row
+
+
+	lea	InitCOP1LCH,a0
+	bsr	SendSerial
+;	move.l	a6,d0
+;	add.l	d6,d0
+
+	move.l	d0,$dff080			;Load new copperlist
+	lea	InitDONEtxt,a0
+	bsr	SendSerial
+
+	lea	InitCOPJMP1,a0
+	bsr	SendSerial
+	move.w	$dff088,d0
+	lea	InitDONEtxt,a0
+	bsr	SendSerial
+
+	lea	InitDMACON,a0
+	bsr	SendSerial
+	move.w	#$8380,$dff096
+	lea	InitDONEtxt,a0
+	bsr	SendSerial
+
+	lea	InitBEAMCON0,a0
+	bsr	SendSerial
+	move.w	#32,$dff1dc
+	lea	InitDONEtxt,a0
+	bsr	SendSerial
+
+	lea	GFXtestNoSerial,a0
+	bsr	SendSerial
+
+.kuken:
+
+
+	
+
+
+.loopa:
+	bsr	GetInput
+
+	cmp.b	#1,BUTTON-V(a6)
+	bne	.loopa
+
+
+	bsr	SetMenuCopper
+
+	bra	GFXtestMenu
 
 
 							; INDATA:
@@ -13248,7 +13390,7 @@ DevPrint:
 
 
 NotImplemented:
-	bsr	ClearScreen
+	jsr	ClearScreen
 	lea	NotImplTxt,a0
 	move.l	#1,d1
 	bsr	Print
@@ -13263,7 +13405,7 @@ NotImplemented:
 
 
 Not1K:
-	bsr	ClearScreen
+	jsr	ClearScreen
 	lea	NotA1kTxt,a0
 	move.l	#1,d1
 	bsr	Print
@@ -13998,7 +14140,7 @@ GetChip:					; Gets extra chipmem below the reserved workarea.
 	PUSH
 
 
-	clr.l	GetChipAddr-V(a6)		; Clear the address replied.
+	clr.l	GetChipAddr-V(a6)		; Clear the address returned.
 	cmp.l	#0,TotalChip-V(a6)		; if there are no chipmem, exit
 	beq	.exit	
 
@@ -15433,6 +15575,19 @@ ECSColor16:
 	dc.w	$400,$0f0,$040,$00f,$00f,$ff0,$440,$f0f
 
 
+GFXColTestCopperStart:
+	dc.l	$01200000,$01220000,$01240000,$01260000,$01280000,$012a0000,$012c0000,$012e0000,$01300000,$01320000,$01340000,$01360000,$0138000,$013a0000,$013c0000,$013e0000
+	dc.l	$01002200,$00920038,$009400d0,$008e2c81,$00902cc1,$01020000,$0108ffd8,$010affd8
+	dc.l	$0180000f,$01800000,$01820000,$01840000,$01860000
+	dc.l	$00e00000,$00e20000,$00e40000,$00e60000
+GFXColTestCopperWait:
+	blk.l	4*15,0
+	dc.l	$6001ff00,$01800000,$0182000,$01840000,$01860000
+	dc.l	$fffffffe	;End of copperlist
+
+GFXColTestCopperEnd:
+
+
 Texts:
 
 parfftxt:
@@ -16086,11 +16241,11 @@ IRQCIAIRQTestText2:
 
 	EVEN
 GFXtestMenuItems:
-	dc.l	GFXtestText,GFXtestMenu1,GFXtestMenu2,GFXtestMenu3,GFXtestMenu4,GFXtestMenu5,0
+	dc.l	GFXtestText,GFXtestMenu1,GFXtestMenu2,GFXtestMenu3,GFXtestMenu4,GFXtestMenu5,GFXtestMenu6,0
 GFXtestMenuCode:
-	dc.l	GFXTestScreen,GFXtest320x200,GFXTestScroll,GFXTestRaster,MainMenu,0	
+	dc.l	GFXTestScreen,GFXtest320x200,GFXTestScroll,GFXTestRaster,GFXTestRGB,MainMenu,0
 GFXtestMenuKey:
-	dc.b	"1","2","3","4","9",0
+	dc.b	"1","2","3","4","5","9",0
 GFXtestText:
 	dc.b	2,"Graphicstests",$a,$a,0
 GFXtestMenu1:
@@ -16102,6 +16257,8 @@ GFXtestMenu3:
 GFXtestMenu4:
 	dc.b	"4 - Test raster (button to exit)",0
 GFXtestMenu5:
+	dc.b	"5 - RGB-test",0
+GFXtestMenu6:
 	dc.b	"9 - Exit to mainmenu",0
 GFXtestNoSerial:
 	dc.b	$a,$d,$a,$d,"GRAPHICTEST IN ACTION, Serialoutput is not possible during test",$a,$d,$a,$d,0
