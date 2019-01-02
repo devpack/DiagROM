@@ -1,4 +1,4 @@
-;APS0000002F0000002F0002C1D30002CB840002CB840002CB840002CB840002CB840002CB840002CB84
+;APS0000002F0000002F0002D5980002DF490002DF490002DF490002DF490002DF490002DF490002DF49
 ;
 ; DiagROM by John "Chucky" Hertell
 ;
@@ -51,7 +51,7 @@ rom_base:	equ $f80000		; Originate as if data is in ROM
 
 ; Then some different modes for the assembler
 
-rommode =	0				; Set to 1 if to assemble as being in ROM
+rommode =	1				; Set to 1 if to assemble as being in ROM
 a1k =		0				; Set to 1 if to assemble as for being used on A1000 (64k memrestriction)
 debug = 	0				; Set to 1 to enable some debugshit in code
 amiga = 	1 				; Set to 1 to create an amiga header to write the ROM to disk
@@ -470,6 +470,13 @@ Begin:
 	bra	DumpSerial
 .ovlover:
 
+
+
+
+
+
+
+
 	PAROUT	#$fe			; Send #$fe to Paralellport.
 	lea	parfetxt,a0			; And explaining simliar text to serialport.
 	lea	.ldsuds1,a1
@@ -627,7 +634,17 @@ Begin:
 
 
 POSTDetectChipmem:
+
+
+
+
+
+.tstnomore:
+
+
 	lea	$400,a6				; Lets scan memory, start at $400
+
+
 	move.l	#$33333333,(a6)			; Write a number that is NOT in the memcheck table. for shadowcheck
 	clr.l	d0			
 	clr.l	d3				; if d3 is not null, it contains first memaddr found
@@ -640,9 +657,9 @@ POSTDetectChipmem:
 
 .detectloop:
 	move.l	(a6),d5				; Do a backup of content
-	lea	MEMCheckPatternFast,a5		; Load list of data to test
+	lea	MEMCheckPattern,a5		; Load list of data to test
 	bclr	#31,d0
-.memloop:
+
 	lea	AddrTxt,a0			; Prints text "Addr $"
 	lea	.addrdone,a1
 	bra	DumpSerial
@@ -654,6 +671,9 @@ POSTDetectChipmem:
 .addrout:
 
 
+.memloop:
+
+
 
 	move.l	(a5),(a6)			; Write data to memory
 	move.l	(a5),d1
@@ -662,6 +682,12 @@ POSTDetectChipmem:
 	move.w	d1,$dff180			; Write data to screen as green only.
 
 	move.l	(a6),d4				; Read data from memory
+	move.l	(a6),d4				; Read data from memory
+	move.l	(a6),d4				; Read data from memory
+	move.l	(a6),d4				; Read data from memory
+	move.l	(a6),d4				; Read data from memory
+	move.l	(a6),d4				; Read data from memory
+	move.l	(a6),d4				; Read data from memory (read several times.. this will make sure it is real data)
 	cmp.l	(a5),d4				; Check if written data is the same as the read data.
 	beq	.ok				; YES it is OK
 
@@ -669,17 +695,68 @@ POSTDetectChipmem:
 						; and user might want to see whats wrong. if we had. we are simply out of mem
 	bne	.faildone
 
+
 	lea	WTxt,a0				; Prints text "Write:"
 	lea	.wtxtdone,a1
 	bra	DumpSerial
 .wtxtdone:
 	move.l	a6,d1				; Print address to check
 
-
 	move.l	(a5),d1
 	lea	.wbindone,a3
 	bra	DumpHexLong
 .wbindone:
+
+
+	;-------------  binary to serial
+	lea	SpacesTxt,a0				; Prints text "Write:"
+	lea	.tststart,a1
+	bra	DumpSerial
+.tststart:
+
+	move.l	(a5),d1
+	move.l	d2,a0
+	move.l	d3,a1
+	move.l	d4,a2
+	move.l	d7,a3
+	move.l	#31,d3
+.tstloop:
+	clr.l	d7
+	btst	d3,d1
+	beq	.tstzero
+	move.b	#"1",d7
+	bra	.tstout
+.tstzero:
+	move.b	#"0",d7
+.tstout:
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd000			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
+	move.l	#40000,d2			; Load d2 with a timeoutvariable. only test this number of times.
+						; IF CIA for serialport is dead we will not end up in a wait-forever-loop.
+						; and as we cannot use timers. we have to do this dirty style of coding...
+.tsttimeoutloop:	
+	move.b	$bfe001,d4			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
+	sub.l	#1,d2				; count down timeout value
+	cmp.l	#0,d2				; if 0, timeout.
+	beq	.tstendloop
+	move.w	$dff018,d4
+	btst	#13,d4				; Check TBE bit
+	beq.s	.tsttimeoutloop
+.tstendloop:
+	move.w	#$0100,d4
+	move.b	d7,d4
+	move.w	d4,$dff030			; send it to serial
+	move.w	#$0001,$dff09c			; turn off the TBE bit
+	dbf	d3,.tstloop
+	move.l	a0,d2
+	move.l	a1,d3
+	move.l	a2,d4
+	move.l	a3,d7
+	;-------------  end of binary to serial
+
 
 	lea	RTxt,a0				; Prints text "Read:"
 	lea	.rtxtdone,a1
@@ -690,6 +767,57 @@ POSTDetectChipmem:
 	lea	.rbindone,a3
 	bra	DumpHexLong
 .rbindone:
+
+	;-------------  binary to serial
+	lea	SpacesTxt,a0				; Prints text "Write:"
+	lea	.tststart1,a1
+	bra	DumpSerial
+.tststart1:
+
+	move.l	d4,d1
+	move.l	d2,a0
+	move.l	d3,a1
+	move.l	d4,a2
+	move.l	d7,a3
+	move.l	#31,d3
+.tstloop1:
+	clr.l	d7
+	btst	d3,d1
+	beq	.tstzero1
+	move.b	#"1",d7
+	bra	.tstout1
+.tstzero1:
+	move.b	#"0",d7
+.tstout1:
+	move.w	#$4000,$dff09a
+	move.w	#373,$dff032			; Set the speed of the serialport (9600BPS)
+	move.b	#$4f,$bfd000			; Set DTR high
+	move.w	#$0801,$dff09a
+	move.w	#$0801,$dff09c
+	move.l	#40000,d2			; Load d2 with a timeoutvariable. only test this number of times.
+						; IF CIA for serialport is dead we will not end up in a wait-forever-loop.
+						; and as we cannot use timers. we have to do this dirty style of coding...
+.tsttimeoutloop1:	
+	move.b	$bfe001,d4			; just read crapdata, we do not care but reading from CIA is slow... for timeout stuff only
+	sub.l	#1,d2				; count down timeout value
+	cmp.l	#0,d2				; if 0, timeout.
+	beq	.tstendloop1
+	move.w	$dff018,d4
+	btst	#13,d4				; Check TBE bit
+	beq.s	.tsttimeoutloop1
+.tstendloop1:
+	move.w	#$0100,d4
+	move.b	d7,d4
+	move.w	d4,$dff030			; send it to serial
+	move.w	#$0001,$dff09c			; turn off the TBE bit
+	dbf	d3,.tstloop1
+	move.l	a0,d2
+	move.l	a1,d3
+	move.l	a2,d4
+	move.l	a3,d7
+	;-------------  end of binary to serial
+
+
 
 	lea	SPACEFAIL,a0			; Prints "FAILED"
 	lea	.faildone,a1
@@ -1766,7 +1894,16 @@ code:
 
 	ifeq	rommode
 
-						; Code to handle stuff when NOT using rom mode. when coding/testing
+
+	clr.l	d0
+	clr.l	d1
+	clr.l	d2
+	clr.l	d3
+	clr.l	d4
+	clr.l	d5
+	clr.l	d6
+	clr.l	d7
+					; Code to handle stuff when NOT using rom mode. when coding/testing
 		move.l	SP,STACKPOINTER		; Store stackpointer
 	        move.l  4.w,a6
 	        lea     graph,a1          
@@ -1775,9 +1912,20 @@ code:
 	        move.l  d0,-(a7)        	;gfxbase!!
 	        move.l  d0,a6
 		jsr	-456(a6)		;OwnBlitter
+		bsr	WaitLong
+
 		jsr	-228(a6)		;WaitBlit
 	        move.l  34(a6),ActiveView	;Store activeview for a clean exit
 	        sub.l   a1,a1
+
+
+		bsr	WaitLong
+		bsr	WaitLong
+		bsr	WaitLong
+		bsr	WaitLong
+		bsr	WaitLong
+		bsr	WaitLong
+		bsr	WaitLong
 
 
 
@@ -1789,10 +1937,7 @@ code:
 		bsr	WaitLong
 		bsr	WaitLong
 		bsr	WaitLong
-		bsr	WaitLong
-		bsr	WaitLong
-		bsr	WaitLong
-		bsr	WaitLong
+		bsr	WaitLong		; Dirty code..  to get rid of issue of screen not initilized sometimes
 
 
 
@@ -5194,10 +5339,72 @@ MemTest:
 	lea	CheckMemCheckAdrTxt,a0
 	bsr	Print
 
+	lea	CheckMemBitErrTxt,a0
+	move.l	#7,d1
+	bsr	Print				; Print Bit error shows max....
 
-;	lea	NotImplTxt,a0
-;	move.l	#2,d1
-;	bsr	Print
+
+	lea	CheckMemBitErrorsTxt,a0
+	move.l	#3,d1				; Print Biterros and byte errors
+	bsr	Print
+
+	move.l	#53,d0
+	move.l	#9,d1
+	bsr	SetPos
+	lea	CheckMemNumErrTxt,a0
+	move.l	#3,d1
+	bsr	Print				; Print "Number of errors"
+	bra	.nofast
+.fastmode:
+	lea	CheckMemFastModeTxt,a0
+	move.l	#2,d1
+	bsr	Print
+
+
+.nofast:
+	move.l	#0,d0
+	move.l	#11,d1
+	bsr	SetPos
+	lea	CheckMemCheckedTxt,a0
+	move.l	#6,d1
+	bsr	Print
+
+	move.l	#26,d0
+	move.l	#11,d1
+	bsr	SetPos
+	lea	CheckMemUsableTxt,a0
+	move.l	#6,d1
+	bsr	Print
+
+	move.l	#52,d0
+	move.l	#11,d1
+	bsr	SetPos
+	lea	CheckMemNonUsableTxt,a0
+	move.l	#6,d1
+	bsr	Print
+
+
+
+	clr.l	d0
+	move.l	#12,d1
+	bsr	SetPos
+	lea	DividerTxt,a0
+	move.l	#4,d1
+	bsr	Print
+
+
+
+	move.l	#0,d0
+	move.l	#18,d1
+	bsr	SetPos
+	lea	NotImplTxt,a0
+	move.l	#1,d1
+	bsr	Print
+
+	bsr	.UpdateMem
+
+
+
 	bsr	.PrintMemRange
 	bsr	WaitPressed
 	bsr	WaitReleased
@@ -5222,6 +5429,71 @@ MemTest:
 	bsr	Print
 
 	rts
+
+
+.UpdateMem:
+	move.l	#12,d0
+	move.l	#4,d1
+	bsr	SetPos
+	lea	NO,a0
+	move.l	#1,d1
+	bsr	Print				; Print Passnumber
+
+	move.l	#18,d0
+	move.l	#5,d1
+	bsr	SetPos
+	lea	NO,a0
+	move.l	#1,d1
+	bsr	Print				; Print Address
+
+	move.l	#12,d0
+	move.l	#8,d1
+	bsr	SetPos
+	lea	NO,a0
+	move.l	#1,d1
+	bsr	Print				; Print Biterrors
+
+	move.l	#13,d0
+	move.l	#9,d1
+	bsr	SetPos
+	lea	NO,a0
+	move.l	#1,d1
+	bsr	Print				; Print Byteerrors
+
+
+	move.l	#71,d0
+	move.l	#9,d1
+	bsr	SetPos
+	lea	NO,a0
+	move.l	#1,d1
+	bsr	Print				; Print Number of errors
+
+
+	move.l	#16,d0
+	move.l	#11,d1
+	bsr	SetPos
+	lea	NO,a0
+	move.l	#1,d1
+	bsr	Print				; Print Checked memory
+
+	move.l	#41,d0
+	move.l	#11,d1
+	bsr	SetPos
+	lea	NO,a0
+	move.l	#1,d1
+	bsr	Print				; Print Usable Memory
+
+	move.l	#70,d0
+	move.l	#11,d1
+	bsr	SetPos
+	lea	NO,a0
+	move.l	#1,d1
+	bsr	Print				; Print NON Usable memory
+
+
+
+	rts
+
 
 DetectMem:
 						; Detects memory
@@ -7219,6 +7491,8 @@ IRQCIACIATest:
 	move.l	#7,d5	
 	bsr	.TestCIA
 
+	bra	.kuk
+
 
 	lea	CIAATestBATxt,a0
 	lea	$bfe201,a5			; load a5 with a base
@@ -7248,7 +7522,7 @@ IRQCIACIATest:
 	bsr	.TestCIA
 
 	bsr	TestBTOD
-
+.kuk:
 
 
 
@@ -8594,9 +8868,12 @@ SystemInfoTest:
 	move.l	#3,d1
 	bsr	Print
 
+	clr.l	d7				; Clear d7.  set it to 1 if a button was stuck.
+
 	cmp.b	#0,STUCKP1LMB-V(a6)
 	beq	.nop1lmb
 	lea	InitP1LMBtxt,a0
+	move.l	#1,d7
 	move.l	#1,d1
 	bsr	Print
 .nop1lmb:
@@ -8604,33 +8881,44 @@ SystemInfoTest:
 	beq	.nop2lmb
 	lea	InitP2LMBtxt,a0
 	move.l	#1,d1
+	move.l	#1,d7
 	bsr	Print
 .nop2lmb:
 	cmp.b	#0,STUCKP1RMB-V(a6)
 	beq	.nop1rmb
 	lea	InitP1RMBtxt,a0
 	move.l	#1,d1
+	move.l	#1,d7
 	bsr	Print
 .nop1rmb:
 	cmp.b	#0,STUCKP2RMB-V(a6)
 	beq	.nop2rmb
 	lea	InitP2RMBtxt,a0
 	move.l	#1,d1
+	move.l	#1,d7
 	bsr	Print
 .nop2rmb:
 	cmp.b	#0,DISPAULA-V(a6)
 	beq	.nobadpaula
 	lea	BadPaulaTXT,a0
 	move.l	#1,d1
+	move.l	#1,d7
 	bsr	Print
 .nobadpaula:
 	cmp.b	#0,OVLErr-V(a6)
 	beq	.noovlerr
 	lea	OvlErrTxt,a0
 	move.l	#1,d1
+	move.l	#1,d7
 	bsr	Print
 .noovlerr:
 
+	cmp.l	#0,d7
+	bne	.stuck
+	lea	NONE,a0
+	move.l	#2,d1
+	bsr	Print
+.stuck:
 	lea	NewLineTxt,a0
 	bsr	Print
 
@@ -13857,7 +14145,7 @@ InputHexNum:					; Inputs a 32 bit hexnumber
 
 
 .gethex:
-	bsr	GetHex				; Strip it to hexnumbers
+	jsr	GetHex				; Strip it to hexnumbers
 	cmp.b	#0,d0				; if returned value is 0, we had no keypress
 	beq	.no
 	cmp.b	#$1b,d0				; Was ESC pressed?
@@ -14116,16 +14404,16 @@ PrintHWReg:
 	move.w	#3,d1
 	bsr	Print
 	lea	Space3,a0
-	bsr	Print
+	jsr	Print
 	lea	HHPOSRTxt,a0
 	move.w	#7,d1
-	bsr	Print
+	jsr	Print
 	move.w	HHPOSR-V(a6),d0
 	bsr	binhexword
 	move.w	#3,d1
-	bsr	Print
+	jsr	Print
 	lea	NewLineTxt,a0
-	bsr	Print
+	jsr	Print
 
 	rts
 
@@ -15752,6 +16040,8 @@ YES:
 	dc.b	"YES",0
 NO:
 	dc.b	"NO ",0
+NONE:
+	dc.b	"NONE",0
 SPACE:
 	dc.b	" ",0
 MB:
@@ -16197,7 +16487,7 @@ CIATestTxt:
 CIATestTxt2:
 	dc.b	2,"Press any key to start tests (2 sec/each), Press ESC for mainmenu",$a,$a,$a,0
 CIATestTxt3:
-	dc.b	2,"Flashing on screen is fully normal, indicating CIA timing. NTSC Will give false data",$a,$a
+	dc.b	2,"Flashing on screen is fully normal, indicating CIA timing. NTSC Will fail",$a,$a
 
 CIAATestAATxt:
 	dc.b	"Testing Timer A, on CIA-A (ODD) :",$a,0
@@ -16612,6 +16902,8 @@ DotTxt:
 	dc.b	".",0
 SpaceTxt:
 	dc.b	" ",0
+SpacesTxt:
+	dc.b	"  ",0
 ColonTxt:
 	dc.b	" : ",0
 BLTDDATTxt:
@@ -16702,9 +16994,9 @@ StartAddrTxt:
 EndAddrTxt:
 	dc.b	"  Endaddr: $",0
 WTxt:
-	dc.b	"  Write: $",0
+	dc.b	$a,$d,"       Write: $",0
 RTxt:
-	dc.b	"  Read: $",0
+	dc.b	$a,$d,"        Read: $",0
 Txt32KBlock:
 	dc.b	"  Number of 32K blocks found: $",0
 PassTxt:
